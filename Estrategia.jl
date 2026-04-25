@@ -1,152 +1,83 @@
-using Statistics
-using Plots
-
 # =========================
-# 📦 ESTRUCTURA
-# =========================
-struct Accion
-    nombre::String
-    precios::Vector{Float64}
-end
-
-# =========================
-# 📊 INDICADORES
+# 📦 DATOS
 # =========================
 
-function SMA(precios, n)
-    return [mean(precios[i-n+1:i]) for i in n:length(precios)]
-end
+ratings = Dict(
+    "Ana" => Dict("Matrix"=>5, "Titanic"=>3, "Avatar"=>4),
+    "Luis" => Dict("Matrix"=>4, "Titanic"=>2, "Avatar"=>5, "Inception"=>5),
+    "Maria" => Dict("Matrix"=>5, "Avatar"=>4, "Inception"=>4),
+    "Pedro" => Dict("Titanic"=>5, "Inception"=>3)
+)
 
-function EMA(precios, n)
-    α = 2 / (n + 1)
-    ema = [precios[1]]
-    for i in 2:length(precios)
-        push!(ema, α * precios[i] + (1 - α) * ema[end])
-    end
-    return ema
-end
+# =========================
+# 📊 SIMILITUD (coseno)
+# =========================
 
-function RSI(precios, n=14)
-    ganancias = Float64[]
-    perdidas = Float64[]
-
-    for i in 2:length(precios)
-        cambio = precios[i] - precios[i-1]
-        push!(ganancias, max(cambio, 0))
-        push!(perdidas, abs(min(cambio, 0)))
+function similitud(u1, u2)
+    comunes = intersect(keys(u1), keys(u2))
+    
+    if length(comunes) == 0
+        return 0.0
     end
 
-    rsis = Float64[]
-    for i in n:length(ganancias)
-        avg_gain = mean(ganancias[i-n+1:i])
-        avg_loss = mean(perdidas[i-n+1:i])
-        rs = avg_gain / (avg_loss + 1e-6)
-        rsi = 100 - (100 / (1 + rs))
-        push!(rsis, rsi)
-    end
+    num = sum(u1[p]*u2[p] for p in comunes)
+    den1 = sqrt(sum(u1[p]^2 for p in comunes))
+    den2 = sqrt(sum(u2[p]^2 for p in comunes))
 
-    return rsis
-end
-
-function MACD(precios)
-    ema12 = EMA(precios, 12)
-    ema26 = EMA(precios, 26)
-    macd = ema12 .- ema26
-    signal = EMA(macd, 9)
-    return macd, signal
+    return num / (den1 * den2 + 1e-6)
 end
 
 # =========================
-# 📈 ESTRATEGIA
+# 🔍 USUARIOS SIMILARES
 # =========================
-function estrategia(precios)
-    sma = SMA(precios, 10)
-    rsi = RSI(precios)
-    macd, signal = MACD(precios)
 
-    señales = String[]
-    idxs = Int[]
+function usuarios_similares(ratings, usuario)
+    sims = Dict()
 
-    n = minimum([length(sma), length(rsi), length(macd)])
-
-    for i in 1:n
-        if rsi[i] < 30 && macd[i] > signal[i]
-            push!(señales, "BUY")
-        elseif rsi[i] > 70 && macd[i] < signal[i]
-            push!(señales, "SELL")
-        else
-            push!(señales, "HOLD")
+    for (otro, data) in ratings
+        if otro != usuario
+            sims[otro] = similitud(ratings[usuario], data)
         end
-        push!(idxs, i)
     end
 
-    return señales, idxs, sma, rsi, macd, signal
+    return sort(collect(sims), by = x -> -x[2])
 end
 
 # =========================
-# 💰 BACKTESTING
+# 🎯 RECOMENDACIONES
 # =========================
-function backtest(precios, señales, idxs; capital_inicial=100.0)
-    capital = capital_inicial
-    acciones = 0.0
-    historial = Float64[]
 
-    for i in 1:length(señales)
-        precio = precios[i]
+function recomendar(ratings, usuario)
+    similares = usuarios_similares(ratings, usuario)
+    vistos = Set(keys(ratings[usuario]))
 
-        if señales[i] == "BUY" && capital > 0
-            acciones = capital / precio
-            capital = 0.0
-        elseif señales[i] == "SELL" && acciones > 0
-            capital = acciones * precio
-            acciones = 0.0
+    scores = Dict{String, Float64}()
+    pesos = Dict{String, Float64}()
+
+    for (otro, sim) in similares
+        for (pelicula, rating) in ratings[otro]
+            if !(pelicula in vistos)
+                scores[pelicula] = get(scores, pelicula, 0.0) + sim * rating
+                pesos[pelicula] = get(pesos, pelicula, 0.0) + sim
+            end
         end
-
-        total = capital + acciones * precio
-        push!(historial, total)
     end
 
-    return historial
+    recomendaciones = Dict()
+
+    for pelicula in keys(scores)
+        recomendaciones[pelicula] = scores[pelicula] / (pesos[pelicula] + 1e-6)
+    end
+
+    return sort(collect(recomendaciones), by = x -> -x[2])
 end
 
 # =========================
-# 📊 DATOS (puedes cambiar por reales)
-# =========================
-precios_tsla = [
-    250, 252, 249, 255, 260, 258, 262, 265, 270, 268,
-    272, 275, 278, 280, 277, 282, 285, 290, 288, 295,
-    300, 305, 310, 308, 315, 320, 318, 325, 330, 335
-]
-
-tsla = Accion("TSLA", precios_tsla)
-
-# =========================
-# 🚀 EJECUCIÓN
-# =========================
-señales, idxs, sma, rsi, macd, signal = estrategia(tsla.precios)
-capital = backtest(tsla.precios, señales, idxs)
-
-# =========================
-# 📉 GRÁFICAS
+# 🚀 USO
 # =========================
 
-# Precio + SMA + señales
-p1 = plot(tsla.precios, label="Precio", title="Precio TSLA + Señales")
-plot!(p1, 10:length(tsla.precios), sma, label="SMA(10)")
+println("Usuarios similares a Ana:")
+println(usuarios_similares(ratings, "Ana"))
 
-for i in 1:length(señales)
-    if señales[i] == "BUY"
-        scatter!(p1, [i], [tsla.precios[i]], label="", markershape=:triangle, markersize=6)
-    elseif señales[i] == "SELL"
-        scatter!(p1, [i], [tsla.precios[i]], label="", markershape=:utriangle, markersize=6)
-    end
-end
-
-# RSI
-p2 = plot(rsi, label="RSI", title="RSI")
-hline!(p2, [30, 70])
-
-# Capital
-p3 = plot(capital, label="Capital", title="Backtesting ($100 inicial)")
-
-plot(p1, p2, p3, layout=(3,1))
+println("\nRecomendaciones para Ana:")
+println(recomendar(ratings, "Ana"))
