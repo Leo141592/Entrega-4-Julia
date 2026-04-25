@@ -1,16 +1,16 @@
 # =========================
-# 📦 DATOS
+# 📦 DATOS BASE
 # =========================
 
 ratings = Dict(
     "Ana" => Dict("Matrix"=>5, "Titanic"=>3, "Avatar"=>4),
-    "Luis" => Dict("Matrix"=>4, "Titanic"=>2, "Avatar"=>5, "Inception"=>5),
-    "Maria" => Dict("Matrix"=>5, "Avatar"=>4, "Inception"=>4),
-    "Pedro" => Dict("Titanic"=>5, "Inception"=>3)
+    "Luis" => Dict("Matrix"=>4, "Titanic"=>2, "Avatar"=>5, "Inception"=>5, "Interstellar"=>4),
+    "Maria" => Dict("Matrix"=>5, "Avatar"=>4, "Inception"=>4, "Interstellar"=>5),
+    "Pedro" => Dict("Titanic"=>5, "Inception"=>3, "Gladiator"=>4)
 )
 
 # =========================
-# 📊 SIMILITUD (coseno)
+# 📊 SIMILITUD
 # =========================
 
 function similitud(u1, u2)
@@ -28,35 +28,18 @@ function similitud(u1, u2)
 end
 
 # =========================
-# 🔍 USUARIOS SIMILARES
+# 🎯 RECOMENDADOR
 # =========================
 
-function usuarios_similares(ratings, usuario)
-    sims = Dict()
-
-    for (otro, data) in ratings
-        if otro != usuario
-            sims[otro] = similitud(ratings[usuario], data)
-        end
-    end
-
-    return sort(collect(sims), by = x -> -x[2])
-end
-
-# =========================
-# 🎯 RECOMENDACIONES
-# =========================
-
-function recomendar(ratings, usuario)
-    similares = usuarios_similares(ratings, usuario)
-    vistos = Set(keys(ratings[usuario]))
-
+function recomendar(ratings, usuario_nuevo)
     scores = Dict{String, Float64}()
     pesos = Dict{String, Float64}()
 
-    for (otro, sim) in similares
-        for (pelicula, rating) in ratings[otro]
-            if !(pelicula in vistos)
+    for (otro, data) in ratings
+        sim = similitud(usuario_nuevo, data)
+
+        for (pelicula, rating) in data
+            if !(pelicula in keys(usuario_nuevo))
                 scores[pelicula] = get(scores, pelicula, 0.0) + sim * rating
                 pesos[pelicula] = get(pesos, pelicula, 0.0) + sim
             end
@@ -73,11 +56,26 @@ function recomendar(ratings, usuario)
 end
 
 # =========================
-# 🚀 USO
+# 👤 INPUT DEL USUARIO
 # =========================
 
-println("Usuarios similares a Ana:")
-println(usuarios_similares(ratings, "Ana"))
+println("🎬 Escribe tus 3 películas favoritas:")
 
-println("\nRecomendaciones para Ana:")
-println(recomendar(ratings, "Ana"))
+favoritas = Dict{String, Float64}()
+
+for i in 1:3
+    print("Película $i: ")
+    pelicula = readline()
+    favoritas[pelicula] = 5.0   # rating alto
+end
+
+# =========================
+# 🚀 RESULTADOS
+# =========================
+
+recs = recomendar(ratings, favoritas)
+
+println("\n🔥 Recomendaciones para ti:")
+for (pelicula, score) in recs[1:min(5, length(recs))]
+    println("👉 $pelicula (score: $(round(score, digits=2)))")
+end
